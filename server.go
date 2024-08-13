@@ -18,7 +18,7 @@ type Option struct {
 	CodeType    codec.Type
 }
 
-var DefaultOption = Option{
+var DefaultOption = &Option{
 	MagicNumber: MagicNumber,
 	CodeType:    codec.GobType,
 }

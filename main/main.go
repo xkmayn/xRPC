@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	xRPC "github.com/xkmayn/xrpc"
-	"github.com/xkmayn/xrpc/codec"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -21,27 +20,29 @@ func StartServer(addr chan string) {
 }
 
 func main() {
+	log.SetFlags(0)
 	addr := make(chan string)
 	go StartServer(addr)
 
-	conn, _ := net.Dial("tcp", <-addr)
-	defer func() { _ = conn.Close() }()
+	client, _ := xRPC.Dial("tcp", <-addr)
+	defer func() { _ = client.Close() }()
 
-	time.Sleep(1)
+	time.Sleep(time.Second)
 
-	_ = json.NewEncoder(conn).Encode(xRPC.DefaultOption)
-	cc := codec.NewGobCodec(conn)
+	wg := new(sync.WaitGroup)
 
 	for i := 0; i < 5; i++ {
-		h := &codec.Header{
-			ServiceMethod: "XKM:Sum",
-			Seq:           uint64(i),
-		}
-		_ = cc.Write(h, fmt.Sprintf("xrpc req %d", h.Seq))
-		_ = cc.ReadHeader(h)
-		var reply string
-		_ = cc.ReadBody(&reply)
+		wg.Add(1)
 
-		log.Println("reply:", reply)
+		go func(i int) {
+			defer wg.Done()
+			args := fmt.Sprintf("xrpc req %d", i)
+			var reply string
+			if err := client.Call("XKM.Sum", args, &reply); err != nil {
+				log.Fatal("call XKM.Sum err:", err)
+			}
+			log.Println("reply:", reply)
+		}(i)
 	}
+	wg.Wait()
 }
