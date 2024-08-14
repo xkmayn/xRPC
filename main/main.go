@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	xRPC "github.com/xkmayn/xrpc"
 	"log"
 	"net"
@@ -9,7 +8,20 @@ import (
 	"time"
 )
 
+type XK int
+
+type Args struct{ Num1, Num2 int }
+
+func (xk XK) Sum(args Args, reply *int) error {
+	*reply = args.Num1 + args.Num2
+	return nil
+}
+
 func StartServer(addr chan string) {
+	var xk XK
+	if err := xRPC.Register(&xk); err != nil {
+		log.Fatal("register error", err)
+	}
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		log.Fatal("network error:", err)
@@ -31,17 +43,17 @@ func main() {
 
 	wg := new(sync.WaitGroup)
 
-	for i := 0; i < 5; i++ {
+	for i := 1; i <= 5; i++ {
 		wg.Add(1)
 
 		go func(i int) {
 			defer wg.Done()
-			args := fmt.Sprintf("xrpc req %d", i)
-			var reply string
-			if err := client.Call("XKM.Sum", args, &reply); err != nil {
-				log.Fatal("call XKM.Sum err:", err)
+			args := &Args{i, i * i}
+			var reply int
+			if err := client.Call("XK.Sum", args, &reply); err != nil {
+				log.Fatal("call XK.Sum err:", err)
 			}
-			log.Println("reply:", reply)
+			log.Printf("%d + %d = %d", args.Num1, args.Num2, reply)
 		}(i)
 	}
 	wg.Wait()
