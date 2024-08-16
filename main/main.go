@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	xRPC "github.com/xkmayn/xrpc"
 	"log"
 	"net"
@@ -49,8 +50,9 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 			args := &Args{i, i * i}
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
 			var reply int
-			if err := client.Call("XK.Sum", args, &reply); err != nil {
+			if err := client.Call(ctx, "XK.Sum", args, &reply); err != nil {
 				log.Fatal("call XK.Sum err:", err)
 			}
 			log.Printf("%d + %d = %d", args.Num1, args.Num2, reply)
