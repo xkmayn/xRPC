@@ -5,6 +5,7 @@ import (
 	xRPC "github.com/xkmayn/xrpc"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -23,21 +24,18 @@ func StartServer(addr chan string) {
 	if err := xRPC.Register(&xk); err != nil {
 		log.Fatal("register error", err)
 	}
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp", ":9999")
 	if err != nil {
 		log.Fatal("network error:", err)
 	}
 	log.Println("start rpc server on :", l.Addr())
+	xRPC.HandleHTTP()
 	addr <- l.Addr().String()
-	xRPC.Accept(l)
+	_ = http.Serve(l, nil)
 }
 
-func main() {
-	log.SetFlags(0)
-	addr := make(chan string)
-	go StartServer(addr)
-
-	client, _ := xRPC.Dial("tcp", <-addr)
+func call(addr chan string) {
+	client, _ := xRPC.XDial("http@" + <-addr)
 	defer func() { _ = client.Close() }()
 
 	time.Sleep(time.Second)
@@ -59,4 +57,11 @@ func main() {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func main() {
+	log.SetFlags(0)
+	addr := make(chan string)
+	go call(addr)
+	StartServer(addr)
 }
