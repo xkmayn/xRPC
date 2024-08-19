@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	xRPC "github.com/xkmayn/xrpc"
+	"github.com/xkmayn/xrpc/registry"
 	"github.com/xkmayn/xrpc/xclient"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -25,21 +27,23 @@ func (xk XK) Sleep(args Args, reply *int) error {
 	return nil
 }
 
-func StartServer(addr chan string) {
-	var xk XK
-	server := xRPC.NewServer()
-	if err := server.Register(&xk); err != nil {
-		log.Fatal("register error", err)
-	}
-	l, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatal("network error:", err)
-	}
+func StartRegistry(wg *sync.WaitGroup) {
+	l, _ := net.Listen("tcp", ":9999")
+	registry.HandleHTTP()
+	wg.Done()
+	_ = http.Serve(l, nil)
+}
 
-	log.Println("start rpc server on :", l.Addr())
-	// server.HandleHTTP()
-	addr <- l.Addr().String()
+func StartServer(registryAddr string, wg *sync.WaitGroup) {
+	var xk XK
+	l, _ := net.Listen("tcp", ":0")
+	server := xRPC.NewServer()
+	_ = server.Register(&xk)
+	registry.Heartbeat(registryAddr, "tcp@"+l.Addr().String(), 0)
+	wg.Done()
+
 	server.Accept(l)
+	// server.HandleHTTP()
 	// _ = http.Serve(l, nil)
 }
 
@@ -84,8 +88,8 @@ func xk(xc *xclient.XClient, ctx context.Context, typ, serviceMethod string, arg
 //	wg.Wait()
 //}
 
-func call(addr1, addr2 string) {
-	d := xclient.NewMultiServersDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+func call(registry string) {
+	d := xclient.NewXRegistryDiscovery(registry, 0)
 	xc := xclient.NewXClient(d, xclient.RandomSelect, nil)
 	defer func() {
 		_ = xc.Close()
@@ -101,8 +105,8 @@ func call(addr1, addr2 string) {
 	wg.Wait()
 }
 
-func broadcast(addr1, addr2 string) {
-	d := xclient.NewMultiServersDiscovery([]string{"tcp@" + addr1, "tcp@" + addr2})
+func broadcast(registry string) {
+	d := xclient.NewXRegistryDiscovery(registry, 0)
 	xc := xclient.NewXClient(d, xclient.RandomSelect, nil)
 	defer func() {
 		_ = xc.Close()
@@ -122,18 +126,24 @@ func broadcast(addr1, addr2 string) {
 
 func main() {
 	log.SetFlags(0)
-	ch1 := make(chan string)
-	ch2 := make(chan string)
-	go StartServer(ch1)
-	go StartServer(ch2)
+	registryAddr := "http://localhost:9999/_xrpc_/registry"
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go StartRegistry(wg)
+	wg.Wait()
 
-	addr1 := <-ch1
-	addr2 := <-ch2
+	time.Sleep(time.Second * 1)
+	wg.Add(2)
 
-	time.Sleep(time.Second * 2)
+	go StartServer(registryAddr, wg)
+	go StartServer(registryAddr, wg)
 
-	call(addr1, addr2)
+	wg.Wait()
+
+	time.Sleep(time.Second * 1)
+
+	call(registryAddr)
 	// fmt.Println("broadcast")
 	// TCP粘包
-	broadcast(addr1, addr2)
+	broadcast(registryAddr)
 }
